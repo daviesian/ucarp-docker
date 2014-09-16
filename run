@@ -1,0 +1,64 @@
+#!/bin/bash
+
+export CMD=$1
+export VIP=$2
+export PASS=$3
+export DEV=${4-eth0}
+
+if [ -z "$PASS" ]
+then
+  echo "$0 command-to-execute vip pass [dev]"
+  echo "nb: Set IPS env var for additional IPs to bind on active system"
+  exit 1
+fi
+
+[ -z "$VHID" ] && VHID=`printf '%d' 0x$(echo $VIP | md5sum | cut -b1-2)`
+
+NET=`ip addr show dev $DEV|awk '/inet[^6]/ {print $2}'`
+RIP=`echo $NET|cut -d/ -f1`
+
+if [ -z "$RIP" ]
+then
+  echo "Couldn't find address for interface $DEV"
+  exit 1
+fi
+
+cat <<EOF
+Config:
+- Virtual IP:     VIP=$VIP
+- Real IP:        RIP=$RIP
+- Server ID:      VHID=$VHID 
+- Additional IPs: IPS=$IPS # additional IPs
+EOF
+
+PIDFILE=/tmp/ucarp.pid
+trap "shutdown" SIGINT SIGTERM
+
+shutdown() {
+  RET=$1
+  echo "Shutting down"
+  PID=`cat $PIDFILE`
+  if [ -z "$PID" ]
+  then
+    echo "ucarp pid not found"
+    exit 99
+  fi
+
+  echo "Demoting master"
+  kill -USR2 $PID
+  sleep 1
+  echo "Sending TERM to ucarp"
+  kill $PID
+  sleep 1
+  echo "Sending KILL to ucarp" # we need to make sure everything is dead before
+  kill -9 $PID # ucarp might promote itself to master afer 3s again
+  exit $RET
+}
+
+( $CMD; shutdown 1 ) &
+
+ucarp -i "$DEV" -s "$RIP" -v "$VHID" -p "$PASS" -a "$VIP" -x "$IPS" \
+      -u /ucarp/scripts/up -d /ucarp/scripts/down -z &
+
+echo $! > $PIDFILE
+wait $!
