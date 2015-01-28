@@ -23,4 +23,6 @@ Such image can be run like this:
   docker run --cap-add=NET_ADMIN --net=host -p 53:53 -p 53:53/udp \
          fish/unbound 1.2.3.4 foobar23 eth1
 
+You can set the IPS env var to bind additional IPs to on active system.
+
 See https://github.com/discordianfish/unbound-docker for a complete example.
