@@ -55,10 +55,23 @@ shutdown() {
   exit $RET
 }
 
-( $CMD; shutdown 1 ) &
+( exec $CMD; shutdown 1 ) &
+CMD_PID=$!
+trap 'kill -HUP '$CMD_PID HUP # Forward HUP to process
 
 ucarp -i "$DEV" -s "$RIP" -v "$VHID" -p "$PASS" -a "$VIP" -x "$IPS" \
       -u /ucarp/scripts/up -d /ucarp/scripts/down -z &
 
 echo $! > $PIDFILE
-wait $!
+
+# This waits for ucarp to stop but keeps waiting in case
+# wait just returned because a trap handler was executed
+while true
+do
+  RET=$(wait $(cat $PIDFILE))
+  if [ -e "/proc/$CMD_PID" ]
+  then
+    continue # assuming wait exited because of the trap
+  fi
+  exit $RET
+done
